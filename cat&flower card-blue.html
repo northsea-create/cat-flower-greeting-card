@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Surprise!!!</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #f0f2f5;
+            font-family: 'Arial', sans-serif;
+        }
+        canvas {
+            display: block;
+        }
+        #pageTitle {
+            font-size: 5em;
+            color: #000000;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        #pageSubTitle {
+            font-size: 1.4em;
+            color: #4a4a4a;
+            margin-top: 10px;
+            margin-bottom: 30px;
+            text-align: center;
+            font-weight: normal;
+        }
+        .game-ui-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            pointer-events: none;
+        }
+        .game-ui-container > * {
+            pointer-events: auto;
+        }
+        #startScreen, #winScreen {
+            text-align: center;
+        }
+        #startButton, #restartButton {
+            padding: 15px 30px;
+            font-size: 1.2em;
+            color: white;
+            background-color: #3033d7;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            transition: background-color 0.3s;
+        }
+        #startButton:hover, #restartButton:hover {
+            background-color: #3033d7;
+        }
+        #winScreen {
+            background-color: rgba(255, 255, 255, 0.95);
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.15);
+        }
+        #winScreen h1 {
+            font-size: 3em;
+            color: #1e21b9;
+            margin-bottom: 20px;
+        }
+
+        #footerCredit {
+            position: absolute; 
+            bottom: 20px;      
+            left: 0;            
+            width: 100%;      
+            text-align: center;
+            font-size: 0.8em;   
+            color: #888888;  
+            z-index: 5;        
+            pointer-events: none; 
+        }
+
+        #winScreen p.win-message-body { 
+            font-size: 1em;      
+            line-height: 1.6;   
+            color: #555555;      
+            margin-top: 15px;     
+            margin-bottom: 25px; 
+            max-width: 80%;       
+            margin-left: auto;    
+            margin-right: auto;  
+            text-align: center;   
+        }
+
+    </style>
+</head>
+<body>
+    <div class="game-ui-container">
+        <h1 id="pageTitle">Surprise!</h1>
+        <h6 id="pageSubTitle">努力选中小猫爪吧</h6>
+        <div id="startScreen">
+            <button id="startButton">开始游戏</button>
+        </div>
+        <div id="winScreen" style="display: none;">
+            <h1>🎂 520节日快乐 🎉</h1>
+            <p class="win-message-body">
+                祝xxx520节日快乐！<br>
+                希望这个小小互动能给你带来一丝惊喜和快乐！
+            </p>
+            <button id="restartButton">再玩一次</button>
+        </div>
+    </div>
+
+    
+    <div id="footerCredit">
+        2025/5/20 @ 林霏开     
+    </div>
+
+    <script>
+        let currentRose = null;
+        let particles = [];
+        let bgGraphics;
+
+        const GOLDEN_ANGLE = 137.5;
+        const PETAL_LAYERS = 4;
+        const PETALS_PER_LAYER_BASE = [30, 22, 16, 10];
+        const LAYER_SCALE_FACTOR = [1.0, 0.7, 0.45, 0.25];
+        const LAYER_HUE_SHIFT = [-10, -5, 5, 12];
+        const LAYER_SATURATION_MOD = [0.95, 1.0, 1.05, 1.1];
+        const LAYER_BRIGHTNESS_MOD = [1.0, 0.97, 0.94, 0.91];
+        //此处修改花朵配色
+        const monetFlowerColorPalettes = [
+            { name: "糖粉", h_range: [0, 10], s_range: [10, 20], b_range: [97, 100] },
+            { name: "米白", h_range: [40, 50], s_range: [5, 15], b_range: [97, 100] },
+            { name: "雾蓝", h_range: [190, 210], s_range: [5, 15], b_range: [94, 100] },
+            { name: "桃紫", h_range: [300, 320], s_range: [10, 30], b_range: [96, 100] },
+            { name: "明黄", h_range: [48, 58], s_range: [30, 50], b_range: [96, 100] }
+        ];
+
+        //此处修改进入游戏后随机出场的句子
+        const randomPhrases = [
+            "身体健康","工作顺利","步步高升"       
+        ];
+        let activePhrases = [];
+
+        let gameState = "waiting";
+        let gameBall = null;
+        let gameStartTime;
+        const BALL_TRANSFORM_DURATION = 20000;
+        const BALL_INITIAL_SIZE = 15;
+        const BALL_FINAL_SIZE = 70;
+        const BALL_INITIAL_SPEED = 10;
+        const BALL_FINAL_SPEED = 2;
+
+        let pageTitleElement;
+        let pageSubTitleElement;
+        let startButton, startScreenContainer, winScreenContainer, restartButton;
+        let gameUiContainer;
+
+        function setup() {
+            createCanvas(windowWidth, windowHeight); 
+
+            colorMode(HSB, 360, 100, 100, 100);
+            angleMode(DEGREES);
+            ellipseMode(CENTER);
+            noStroke();
+
+            bgGraphics = createGraphics(width, height);
+            bgGraphics.colorMode(HSB, 360, 100, 100, 100);
+            drawMonetBackground(bgGraphics);
+
+            pageTitleElement = select('#pageTitle');
+            pageSubTitleElement = select('#pageSubTitle');
+            startButton = select('#startButton');
+            startScreenContainer = select('#startScreen');
+            winScreenContainer = select('#winScreen');
+            restartButton = select('#restartButton');
+            gameUiContainer = select('.game-ui-container');
+
+            if (!pageTitleElement || !pageSubTitleElement || !startScreenContainer || !winScreenContainer || !gameUiContainer || !startButton || !restartButton) {
+                console.error("One or more UI elements were not found! Check HTML IDs and classes.");
+            }
+
+            startButton.mousePressed(startGame);
+            restartButton.mousePressed(resetGame);
+            
+            textFont('Arial'); 
+            updateUI();
+        }
+
+        function startGame() {
+            console.log("startGame called");
+            gameState = "playing";
+            gameBall = new BouncingBall(
+                BALL_INITIAL_SIZE, BALL_FINAL_SIZE,
+                BALL_INITIAL_SPEED, BALL_FINAL_SPEED,
+                BALL_TRANSFORM_DURATION
+            );
+            gameStartTime = millis();
+            currentRose = null;
+            particles = [];
+            activePhrases = []; 
+            updateUI();
+            console.log("startGame finished");
+        }
+
+        function resetGame() {
+            gameState = "waiting";
+            gameBall = null;
+            currentRose = null;
+            particles = [];
+            activePhrases = []; 
+            updateUI();
+        }
+
+        function gameWon() {
+            gameState = "won";
+            updateUI();
+        }
+
+        function updateUI() {
+            console.log("Updating UI, gameState: ", gameState);
+            if (!pageTitleElement || !pageSubTitleElement || !startScreenContainer || !winScreenContainer || !gameUiContainer) {
+                console.error("Cannot update UI - one or more container elements are null.");
+                return;
+            }
+
+            if (gameState === "waiting") {
+                pageTitleElement.style('display', 'block');
+                pageSubTitleElement.style('display', 'block');
+                startScreenContainer.style('display', 'block');
+                winScreenContainer.style('display', 'none');
+                gameUiContainer.style('pointer-events', 'auto');
+            } else if (gameState === "playing") {
+                pageTitleElement.style('display', 'none');
+                pageSubTitleElement.style('display', 'none');
+                startScreenContainer.style('display', 'none');
+                winScreenContainer.style('display', 'none');
+                gameUiContainer.style('pointer-events', 'none');
+            } else if (gameState === "won") {
+                pageTitleElement.style('display', 'none');
+                pageSubTitleElement.style('display', 'none');
+                startScreenContainer.style('display', 'none');
+                winScreenContainer.style('display', 'block');
+                gameUiContainer.style('pointer-events', 'auto');
+            }
+        }
+
+
+        // 背景颜色在这里调整
+        function drawMonetBackground(pg) {
+            pg.noStroke();
+            // 1. 线性渐变背景 
+            let bgGradient = pg.drawingContext.createLinearGradient(0, 0, pg.width, pg.height);
+            bgGradient.addColorStop(0, 'hsla(200, 50%, 96%, 1)'); // 非常浅的天蓝色
+            bgGradient.addColorStop(1, 'hsla(220, 55%, 94%, 1)'); // 略深一点的柔和浅蓝
+            pg.drawingContext.fillStyle = bgGradient;
+            pg.rect(0, 0, pg.width, pg.height);
+
+            // 2. 点缀的椭圆笔触
+            for (let i = 0; i < 800; i++) { // 笔触数量可以根据效果调整
+                let x = random(pg.width);
+                let y = random(pg.height);
+                let w = random(60, 120);
+                let h = random(30, 60);
+
+                // 色相范围为蓝色系
+                let hue = random(190, 230); // 直接在青蓝到浅蓝之间随机
+                let saturation = random(15, 40); // 调整饱和度，让颜色更明显一点但仍柔和
+                let brightness = random(90, 98); // 保持高亮度
+                let alpha = random(6, 18);      // 调整透明度
+
+                pg.fill(hue, saturation, brightness, alpha);
+                pg.ellipse(x, y, w, h);
+            }
+
+            // 3. 中心偏上的光感 (保持白色或微调)
+            let glowGradient = pg.drawingContext.createRadialGradient(
+                pg.width / 2, pg.height * 0.35, 50,  // 光心位置
+                pg.width / 2, pg.height * 0.35, pg.width * 0.7 // 光晕扩散范围
+            );
+            // 保持白色光晕，效果好
+            glowGradient.addColorStop(0, 'hsla(0, 0%, 100%, 0.12)');
+            glowGradient.addColorStop(1, 'hsla(0, 0%, 100%, 0)');
+            // 或者带一点蓝色调的光晕核心:
+            // glowGradient.addColorStop(0, 'hsla(210, 30%, 98%, 0.12)');
+            // glowGradient.addColorStop(1, 'hsla(210, 30%, 98%, 0)');
+
+
+            pg.drawingContext.fillStyle = glowGradient;
+            pg.ellipse(pg.width / 2, pg.height * 0.35, pg.width * 1.4, pg.height * 1.2);
+        }
+
+        function draw() {
+            image(bgGraphics, 0, 0);
+
+            if (gameState === "playing" && gameBall) {
+                gameBall.update();
+                gameBall.display();
+            }
+
+            for (let i = particles.length - 1; i >= 0; i--) {
+                particles[i].update();
+                particles[i].display();
+                if (particles[i].isDead()) particles.splice(i, 1);
+            }
+
+            if (currentRose) {
+                currentRose.update();
+                currentRose.display();
+                if (currentRose.isFullyBloomed()) currentRose.hoverEffect(mouseX, mouseY);
+            }
+
+            for (let i = activePhrases.length - 1; i >= 0; i--) {
+                activePhrases[i].update();
+                activePhrases[i].display();
+                if (activePhrases[i].isDead()) activePhrases.splice(i, 1);
+            }
+        }
+
+        function mousePressed() {
+            if (gameUiContainer && gameUiContainer.elt.style.pointerEvents === 'none') {
+                if (mouseX < 0 || mouseX > width || mouseY < 0 || mouseY > height) return; // 点击在画布外则忽略
+            } else {
+            }
+
+
+            if (gameState === "playing") {
+                if (gameBall && gameBall.isClicked(mouseX, mouseY)) {
+                    gameWon();
+                } else {
+                    if (mouseX >= 0 && mouseX <= width && mouseY >= 0 && mouseY <= height) {
+                        let chosenPalette = random(monetFlowerColorPalettes);
+                        currentRose = new Rose(mouseX, mouseY, chosenPalette);
+                        for (let i = 0; i < 25; i++) { particles.push(new Particle(mouseX,mouseY,random(chosenPalette.h_range[0],chosenPalette.h_range[1])+random(-5,5),random(chosenPalette.s_range[0],chosenPalette.s_range[1])*random(0.9,1.1),random(chosenPalette.b_range[0],chosenPalette.b_range[1])*random(0.95,1.05),0.6)); }
+                        let phraseText = random(randomPhrases);
+                        let phraseX = mouseX + random(-30, 30);
+                        let phraseY = mouseY - (currentRose ? currentRose.baseScale * 15 : 30);
+                        activePhrases.push(new FloatingPhrase(phraseText, phraseX, phraseY));
+                    }
+                }
+            } else if (gameState === "waiting") {
+                 if (mouseX >= 0 && mouseX <= width && mouseY >= 0 && mouseY <= height) {
+                     let chosenPalette = random(monetFlowerColorPalettes);
+                     currentRose = new Rose(mouseX, mouseY, chosenPalette);
+                     for (let i = 0; i < 25; i++) { particles.push(new Particle(mouseX,mouseY,random(chosenPalette.h_range[0],chosenPalette.h_range[1])+random(-5,5),random(chosenPalette.s_range[0],chosenPalette.s_range[1])*random(0.9,1.1),random(chosenPalette.b_range[0],chosenPalette.b_range[1])*random(0.95,1.05),0.6)); }
+                 }
+            }
+        }
+
+        class BouncingBall {
+            constructor(initialSize, finalSize, initialSpeed, finalSpeed, transformDuration) {
+                this.pos = createVector(random(width * 0.2, width * 0.8), random(height * 0.2, height * 0.8));
+                this.vel = p5.Vector.random2D(); this.initialSize = initialSize; this.finalSize = finalSize;
+                this.currentSize = initialSize; this.initialSpeed = initialSpeed; this.finalSpeed = finalSpeed;
+                this.currentSpeed = initialSpeed; this.vel.setMag(this.currentSpeed);
+                this.transformDuration = transformDuration; this.creationTime = millis();
+                this.color = color(random(360), 80, 90);
+            }
+            update() {
+                let elapsedTime = millis() - this.creationTime;
+                let progress = constrain(elapsedTime / this.transformDuration, 0, 1);
+                this.currentSize = lerp(this.initialSize, this.finalSize, progress);
+                this.currentSpeed = lerp(this.initialSpeed, this.finalSpeed, progress);
+                this.vel.setMag(this.currentSpeed); this.pos.add(this.vel);
+                if (this.pos.x-this.currentSize/2<0||this.pos.x+this.currentSize/2>width){this.vel.x*=-1;this.pos.x=constrain(this.pos.x,this.currentSize/2,width-this.currentSize/2);}
+                if (this.pos.y-this.currentSize/2<0||this.pos.y+this.currentSize/2>height){this.vel.y*=-1;this.pos.y=constrain(this.pos.y,this.currentSize/2,height-this.currentSize/2);}
+            }
+
+            display() {
+                push(); 
+                translate(this.pos.x, this.pos.y); 
+
+                let ballHue = 0;        
+                let ballSaturation = 0; 
+                let ballBrightness = 100; 
+                let ballAlpha = 10;     
+
+                fill(ballHue, ballSaturation, ballBrightness, ballAlpha);
+                noStroke(); 
+                ellipse(0, 0, this.currentSize, this.currentSize); 
+
+
+                let pawHue = 210;       
+                let pawSaturation = 50; 
+                let pawBrightness = 80;  
+                let pawAlpha = 80;      // 透明度 
+
+                fill(pawHue, pawSaturation, pawBrightness, pawAlpha);
+                noStroke(); 
+
+
+                let pawAreaScale = 0.75; // 猫爪图案区域占底球直径的75%
+                let effectivePawSize = this.currentSize * pawAreaScale;
+
+                let designBaseSize = 100; 
+                let scaleFactor = effectivePawSize / designBaseSize;
+
+                // --- 绘制主肉垫 (参考图片，略像圆角倒三角或心形下半部分) ---
+                // 主肉垫的宽度和高度比例 (基于designBaseSize)
+                let mainPadWidth = 60 * scaleFactor;
+                let mainPadHeight = 50 * scaleFactor;
+                // 主肉垫的Y轴偏移，使其在球的中心偏下一点，给指头留空间
+                let mainPadYOffset = 20 * scaleFactor;
+                // 使用 ellipse 模拟，可以调整参数使其更像
+                ellipse(0, mainPadYOffset, mainPadWidth, mainPadHeight);
+
+                // 指头肉垫的大小 (基于designBaseSize) - 保持不变或略微调整
+                let fingerPadSize = 25 * scaleFactor;
+
+                // 指头肉垫的Y轴偏移 (相对于球中心，在主肉垫上方) - 保持不变或略微调整
+                let fingerRowYOffset = -30 * scaleFactor;
+
+                // 1. 中间的指头 (通常略微靠上/靠前)
+                let middleFingerYAdjust = -3 * scaleFactor; // 让中间指头比两侧的再高一点点
+                ellipse(0, fingerRowYOffset + middleFingerYAdjust, fingerPadSize, fingerPadSize);
+
+                // 2. 左侧的指头
+                let sideFingerXOffset = 40 * scaleFactor; // 调整左右指头与中心的X轴距离
+                let sideFingerYAdjust = 12 * scaleFactor;  // 让两侧指头比中间的略低一点点，形成轻微弧度
+                ellipse(-sideFingerXOffset, fingerRowYOffset + sideFingerYAdjust, fingerPadSize, fingerPadSize);
+
+                // 3. 右侧的指头
+                ellipse(sideFingerXOffset, fingerRowYOffset + sideFingerYAdjust, fingerPadSize, fingerPadSize);
+
+                
+                pop(); 
+            }
+
+            isClicked(mx,my){let d=dist(mx,my,this.pos.x,this.pos.y);return d<this.currentSize/2;}
+        }
+
+        class Rose {
+            constructor(x, y, chosenFlowerPalette) {
+                this.x = x;
+                this.y = y;
+                this.chosenFlowerPalette = chosenFlowerPalette;
+                this.baseScale = random(1.8, 7.5);
+                this.animationProgress = 0;
+                this.animationSpeed = random(0.02, 0.033);
+                this.layers = [];
+                let baseHueForRose = random(this.chosenFlowerPalette.h_range[0], this.chosenFlowerPalette.h_range[1]);
+                for (let i = 0; i < PETAL_LAYERS; i++) {
+                    this.layers.push({
+                        petalCount: PETALS_PER_LAYER_BASE[i] + floor(random(-3, 3)),
+                        scale: this.baseScale * LAYER_SCALE_FACTOR[i],
+                        rotationOffset: random(360),
+                        hue: (baseHueForRose + LAYER_HUE_SHIFT[i] + 360) % 360,
+                        saturation: constrain(random(this.chosenFlowerPalette.s_range[0], this.chosenFlowerPalette.s_range[1]) * LAYER_SATURATION_MOD[i], this.chosenFlowerPalette.s_range[0] * 0.7, 90),
+                        brightness: constrain(random(this.chosenFlowerPalette.b_range[0], this.chosenFlowerPalette.b_range[1]) * LAYER_BRIGHTNESS_MOD[i], this.chosenFlowerPalette.b_range[0] * 0.8, 100),
+                    });
+                }
+                this.petalShapeType = floor(random(10));
+            }
+
+            update() {
+                if (this.animationProgress < 1) {
+                    this.animationProgress += this.animationSpeed;
+                    this.animationProgress = min(this.animationProgress, 1);
+                }
+            }
+
+            isFullyBloomed() {
+                return this.animationProgress >= 1;
+            }
+
+            display() {
+                push();
+                translate(this.x, this.y);
+                for (let i = this.layers.length - 1; i >= 0; i--) {
+                    this.drawLayer(this.layers[i]);
+                }
+                pop();
+            }
+
+            drawLayer(layer) {
+                let animatedPetalCount = floor(layer.petalCount * pow(this.animationProgress, 2.8));
+                for (let n = 0; n < animatedPetalCount; n++) {
+                    let angle = n * GOLDEN_ANGLE + layer.rotationOffset;
+                    let r = layer.scale * sqrt(n) * 1.8 * this.animationProgress;
+                    let petalX = r * cos(angle);
+                    let petalY = r * sin(angle);
+                    let currentPetalScaleFactor = pow(this.animationProgress, 0.9);
+                    let petalWidth = layer.scale * random(5, 9) * currentPetalScaleFactor;
+                    let petalHeight = layer.scale * random(10, 16) * currentPetalScaleFactor;
+
+                    if (petalWidth < 0.5 || petalHeight < 0.5) continue;
+
+
+
+                    push();
+                    translate(petalX, petalY);
+                    rotate(angle + 90);
+
+                    // --- 渐变颜色准备，基于 layer 的 HSB ---
+                    let baseH = (layer.hue + random(-1, 1) + 360) % 360;
+                    let originalS = layer.saturation;
+                    let originalB = layer.brightness;
+                    let fillAlphaPercent = (gameState === "playing" ? 70 : 95) + random(-2, 5);
+
+                    let startS = constrain(originalS * 0.6, 5, 50);
+                    let startB = constrain(originalB * 2, 90, 100);                    
+                    let colorStartStr = `hsla(${baseH}, ${startS}%, ${startB}%, ${fillAlphaPercent / 100})`;
+
+                    let endS = constrain(originalS * 3, 10, 95);
+                    let endB = constrain(originalB * 0.3, 80, 98);
+                    let endHue = (baseH + random(5, 15) + 360) % 360; // 例如，让根部色相偏移5-15度
+                    let colorEndStr = `hsla(${endHue}, ${endS}%, ${endB}%, ${fillAlphaPercent / 100})`;
+                    //let colorEndStr = `hsla(${baseH}, ${endS}%, ${endB}%, ${fillAlphaPercent / 100})`;
+
+                    // --- 修改描边颜色为黑色 ---
+                    let strokeAlphaPercent = (gameState === "playing" ? 40 : 55); // 保持之前的透明度逻辑
+                    // 直接定义黑色描边字符串
+                    // HSLA for black: H and S don't matter, L=0%
+                    let strokeColorStr = `hsla(0, 0%, 0%, ${strokeAlphaPercent / 70})`; 
+                    
+                    this.drawPetalShape(0, 0, petalWidth, petalHeight, this.petalShapeType, colorStartStr, colorEndStr, strokeColorStr);
+
+                    pop();
+                }
+            }
+
+
+            drawPetalShape(x, y, w, h, type = 0, gradColorStart, gradColorEnd, strokeColorCSS) { // strokeColorCSS 是CSS字符串
+                const ctx = drawingContext;
+
+                // 1. 设置原生 Canvas 的填充样式为渐变
+                let gradient = ctx.createLinearGradient(x, y - h * 0.4, x, y + h * 0.4);
+                gradient.addColorStop(0, gradColorStart);
+                gradient.addColorStop(1, gradColorEnd);
+                ctx.fillStyle = gradient;
+
+
+                if (strokeColorCSS && strokeColorCSS !== "transparent") {
+                    let p5StrokeColor = color(strokeColorCSS); 
+                    stroke(p5StrokeColor); 
+                    strokeWeight(0.3);
+                } else {
+                    noStroke(); 
+                }
+
+                beginShape();
+                switch (type) {
+                    case 0: curveVertex(x,y-h);curveVertex(x+w*0.2,y-h*0.4);curveVertex(x+w*0.3,y);curveVertex(x,y+h*0.3);curveVertex(x-w*0.3,y);curveVertex(x-w*0.2,y-h*0.4);curveVertex(x,y-h);break;
+                    case 1: curveVertex(x, y - h * 0.7); curveVertex(x + w * 0.4, y - h * 0.2); curveVertex(x + w * 0.25, y + h * 0.3); curveVertex(x, y + h * 0.5); curveVertex(x - w * 0.25, y + h * 0.3); curveVertex(x - w * 0.4, y - h * 0.2); curveVertex(x, y - h * 0.7); break;
+                    case 2: curveVertex(x, y - h * 0.5); curveVertex(x + w * 0.5, y); curveVertex(x + w * 0.3, y + h * 0.4); curveVertex(x, y + h * 0.5); curveVertex(x - w * 0.3, y + h * 0.4); curveVertex(x - w * 0.5, y); curveVertex(x, y - h * 0.5); break;
+                    case 3: vertex(x, y - h * 0.6); vertex(x + w * 0.5, y - h * 0.1); vertex(x + w * 0.3, y + h * 0.4); vertex(x, y + h * 0.2); vertex(x - w * 0.3, y + h * 0.4); vertex(x - w * 0.5, y - h * 0.1); vertex(x, y - h * 0.6); break;
+                    case 4: curveVertex(x, y - h * 0.6); curveVertex(x + w * 0.5, y - h * 0.4); curveVertex(x + w * 0.3, y + h * 0.3); curveVertex(x, y + h * 0.5); curveVertex(x - w * 0.3, y + h * 0.3); curveVertex(x - w * 0.5, y - h * 0.4); curveVertex(x, y - h * 0.6); break;
+                    case 5: curveVertex(x, y - h * 0.5); curveVertex(x + w * 0.35, y - h * 0.4); curveVertex(x + w * 0.45, y); curveVertex(x, y + h * 0.4); curveVertex(x - w * 0.45, y); curveVertex(x - w * 0.35, y - h * 0.4); curveVertex(x, y - h * 0.5); break;
+                    case 6: curveVertex(x, y - h * 0.6); curveVertex(x + w * 0.5, y - h * 0.2); curveVertex(x + w * 0.3, y + h * 0.4); curveVertex(x, y + h * 0.6); curveVertex(x - w * 0.3, y + h * 0.4); curveVertex(x - w * 0.5, y - h * 0.2); curveVertex(x, y - h * 0.6); break;
+                    case 7: curveVertex(x, y - h); curveVertex(x + w * 0.35, y - h * 0.2); curveVertex(x + w * 0.25, y + h * 0.6); curveVertex(x, y + h * 0.8); curveVertex(x - w * 0.25, y + h * 0.6); curveVertex(x - w * 0.35, y - h * 0.2); curveVertex(x, y - h); break;
+                    case 8: vertex(x, y - h * 0.6); vertex(x + w * 0.4, y - h * 0.2); vertex(x + w * 0.3, y + h * 0.35); vertex(x, y + h * 0.2); vertex(x - w * 0.3, y + h * 0.35); vertex(x - w * 0.4, y - h * 0.2); vertex(x, y - h * 0.6); break;
+                    case 9: curveVertex(x, y - h * 0.6); curveVertex(x + w * 0.4, y - h * 0.3); curveVertex(x + w * 0.3, y + h * 0.5); curveVertex(x, y + h * 0.65); curveVertex(x - w * 0.3, y + h * 0.5); curveVertex(x - w * 0.4, y - h * 0.3); curveVertex(x, y - h * 0.6); break;
+                }
+                endShape(CLOSE); 
+            }
+
+            hoverEffect(mx, my) {
+                if (!this.isFullyBloomed() || gameState === "playing") return;
+                let d = dist(mx, my, this.x, this.y);
+                let hoverRadius = this.baseScale * sqrt(this.layers[0].petalCount) * 1.1;
+                if (d < hoverRadius) {
+                    if (frameCount % 5 === 0) {
+                        let p_hue = random(this.chosenFlowerPalette.h_range[0], this.chosenFlowerPalette.h_range[1]) + random(-8, 8);
+                        let p_sat = random(this.chosenFlowerPalette.s_range[0], this.chosenFlowerPalette.s_range[1]) * random(0.85, 1.15);
+                        let p_bri = random(this.chosenFlowerPalette.b_range[0], this.chosenFlowerPalette.b_range[1]) * random(0.9, 1.1);
+                        particles.push(new Particle(this.x + randomGaussian(0, this.baseScale * 1.2), this.y + randomGaussian(0, this.baseScale * 1.2), p_hue, p_sat, p_bri, 0.55));
+                    }
+                }
+            }
+        }
+
+        class FloatingPhrase{
+            constructor(text,x,y){
+                this.text=text;
+                this.pos=createVector(x,y+random(-10,10));
+                this.lifespan=180;
+                this.initialLifespan=this.lifespan;
+                this.currentAlpha=100; 
+                this.textSize=random(15,20);
+                this.textColor=color(random(220,240),random(50,75),random(85,100),this.currentAlpha);
+            }
+            update(){
+                this.lifespan--;
+                this.currentAlpha=map(this.lifespan,0,this.initialLifespan,0,100);
+                this.textColor.setAlpha(constrain(this.currentAlpha,0,100));
+                this.pos.y-=0.3;
+            }
+            display(){
+                push();
+                fill(this.textColor);
+                noStroke();
+                textAlign(CENTER,BOTTOM);
+                textSize(this.textSize);
+                text(this.text,this.pos.x,this.pos.y);
+                pop();
+            }
+            isDead(){return this.lifespan<=0;}
+        }
+
+        class Particle{constructor(x,y,hue,saturation,brightness,sizeMultiplier=1){this.pos=createVector(x,y);let angle=random(360);let speed=random(0.6,2.0);this.vel=createVector(cos(angle)*speed,sin(angle)*speed);this.acc=createVector(randomGaussian(0,0.012),randomGaussian(0,0.012)-0.007);this.lifespan=random(55,150);this.baseHue=hue;this.baseSaturation=saturation;this.baseBrightness=brightness;this.size=random(2.0,5.5)*sizeMultiplier;this.originalLifespan=this.lifespan;}update(){this.vel.add(this.acc);this.pos.add(this.vel);this.lifespan-=1.25;this.vel.mult(0.982);}display(){noStroke();let alpha=map(this.lifespan,0,this.originalLifespan,0,65);fill((this.baseHue+map(this.lifespan,0,this.originalLifespan,15,0)+360)%360,constrain(this.baseSaturation+randomGaussian(0,3),10,85),constrain(this.baseBrightness+randomGaussian(0,3),80,100),constrain(alpha,0,100));ellipse(this.pos.x,this.pos.y,this.size);}isDead(){return this.lifespan<0;}}
+
+        function windowResized() {
+            resizeCanvas(windowWidth, windowHeight);
+            bgGraphics = createGraphics(width, height);
+            bgGraphics.colorMode(HSB, 360, 100, 100, 100);
+            drawMonetBackground(bgGraphics);
+            resetGame();
+        }
+    </script>
+</body>
+</html>
